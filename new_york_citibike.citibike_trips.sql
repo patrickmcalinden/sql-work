@@ -1,5 +1,5 @@
 --removes all of the null data assuming that no row can have a blank start station with other valid columns of data \\saving result of this as view in bigquery
---turned this result into temp table, seen below on next query
+--turned this result into view, seen below on next query
 select *
 from bigquery-public-data.new_york_citibike.citibike_trips
 where start_station_id is not Null;
@@ -10,7 +10,7 @@ from `citibike_trips_modified.trips`
 group by gender
 order by gender_count desc;
  
- --what is the average trip duration(in minutes) by gender
+--what is the average trip duration(in minutes) by gender
 select gender, CONCAT(ROUND(avg(tripduration)/60, 2),' minutes') as avg_trip_duration
 from `citibike_trips_modified.trips`
 group by gender
