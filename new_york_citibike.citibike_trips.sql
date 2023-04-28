@@ -15,6 +15,11 @@ from `citibike_trips_modified.trips`
 group by gender
 order by avg_trip_duration desc;
 
+select usertype, CONCAT(ROUND(avg(tripduration)/60, 2),' minutes') as avg_trip_duration
+from `citibike_trips_modified.trips`
+group by usertype
+order by avg_trip_duration desc;
+
 --How many trips have been taken by subscribers/customers? ...makes sense that mroe subscribers would use service mroe
 select usertype , count(usertype) as user_count, 
 from `citibike_trips_modified.trips`
@@ -69,6 +74,10 @@ where extract(YEAR from starttime) = 2018
 group by year, month
 order by month asc;
 
+select extract(year from starttime) as year, count(*) as trips
+from `citibike_trips_modified.trips`
+group by year
+
 --What time of day has the most trips?
 
 --first checking for dupliated entries (only one dup)
@@ -86,3 +95,204 @@ FROM (
 )
 group by hour
 order by hour asc
+
+--Over the course of the dataset what month has the most trips
+SELECT EXTRACT(MONTH FROM starttime) AS month , count(*) as tripspermonth
+FROM (
+    SELECT bikeid, starttime,stoptime,tripduration, start_station_id, end_station_id, usertype, COUNT(*) as count
+    FROM `citibike_trips_modified.trips`
+    GROUP BY bikeid, starttime,stoptime,tripduration, start_station_id, end_station_id, usertype
+    HAVING COUNT(*) = 1
+)
+group by month
+order by month asc
+
+
+SELECT
+  EXTRACT(MONTH FROM starttime) AS month,
+  EXTRACT(HOUR FROM starttime) AS hour,
+  COUNT(*) AS trips
+FROM (
+  SELECT
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype,
+    COUNT(*) AS count
+  FROM `citibike_trips_modified.trips`
+  GROUP BY
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype
+  HAVING COUNT(*) = 1
+)
+GROUP BY month, hour
+order by month, hour
+
+SELECT 
+  EXTRACT(YEAR FROM starttime) AS year,
+  EXTRACT(MONTH FROM starttime) AS month,
+  CASE 
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 6 AND 11 THEN 'Morning'
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 12 AND 17 THEN 'Afternoon'
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 18 AND 23 THEN 'Evening'
+    ELSE 'Night'
+  END AS time_segment,
+  COUNT(*) AS trips
+FROM (
+  SELECT
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype,
+    COUNT(*) AS count
+  FROM `citibike_trips_modified.trips`
+  GROUP BY
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype
+  HAVING COUNT(*) = 1
+)
+GROUP BY year, month, time_segment
+ORDER BY year, month, CASE time_segment
+          WHEN 'Morning' THEN 1
+          WHEN 'Afternoon' THEN 2
+          WHEN 'Evening' THEN 3
+          ELSE 4
+          end
+
+select *
+from `citibike_trips_modified.trips`
+
+
+--gender - when each gender takes the maority of their trips 
+SELECT 
+  gender,
+  EXTRACT(HOUR FROM starttime) AS hour,
+  COUNT(*) AS trips
+FROM (
+  SELECT
+    bikeid,
+    starttime,
+    stoptime,
+    tripduration,
+    start_station_id,
+    end_station_id,
+    usertype,
+    gender,
+    COUNT(*) AS count
+  FROM `citibike_trips_modified.trips`
+  GROUP BY
+    bikeid,
+    starttime,
+    stoptime,
+    tripduration,
+    start_station_id,
+    end_station_id,
+    usertype,
+    gender
+  HAVING COUNT(*) = 1
+) 
+GROUP BY gender, hour
+ORDER BY gender, hour
+
+--user type  -when each user type takes the majority of their trips
+SELECT 
+  usertype,
+  CASE 
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 6 AND 11 THEN 'Morning'
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 12 AND 17 THEN 'Afternoon'
+    WHEN EXTRACT(HOUR FROM starttime) BETWEEN 18 AND 23 THEN 'Evening'
+    ELSE 'Night'
+  END AS time_segment,
+  COUNT(*) AS trips
+FROM (
+  SELECT
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype,
+    COUNT(*) AS count
+  FROM `citibike_trips_modified.trips`
+  GROUP BY
+    bikeid, starttime, stoptime, tripduration,
+    start_station_id, end_station_id, usertype
+  HAVING COUNT(*) = 1
+)
+GROUP BY usertype,time_segment
+ORDER BY usertype, CASE time_segment
+          WHEN 'Morning' THEN 1
+          WHEN 'Afternoon' THEN 2
+          WHEN 'Evening' THEN 3
+          ELSE 4
+          end
+
+--finiding distance traveled for each bike each trip 
+SELECT extract(YEAR from starttime) as year, bikeid, 
+  SUM(
+    3963.189 * CASE 
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) > 1 THEN 0
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) < -1 THEN 0
+      ELSE ACOS(
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) 
+    END
+  ) AS total_distance_in_miles
+FROM `citibike_trips_modified.trips`
+GROUP BY bikeid, year;
+
+select COUNT(DISTINCT bikeid)
+FROM `citibike_trips_modified.trips`
+
+
+SELECT bikeid, 
+  SUM(
+    3963.189 * CASE 
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) > 1 THEN 0
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) < -1 THEN 0
+      ELSE ACOS(
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) 
+    END
+  ) AS total_distance_in_miles
+FROM `citibike_trips_modified.trips`
+GROUP BY bikeid;
+
+SELECT extract(year from starttime) as year, 
+  SUM(
+    3963.189 * CASE 
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) > 1 THEN 0
+      WHEN (
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) < -1 THEN 0
+      ELSE ACOS(
+        SIN(start_station_latitude * 0.017453293) * SIN(end_station_latitude * 0.017453293) +
+        COS(start_station_latitude * 0.017453293) * COS(end_station_latitude * 0.017453293) *
+        COS((end_station_longitude * 0.017453293) - (start_station_longitude * 0.017453293))
+      ) 
+    END
+  ) AS total_distance_in_miles
+FROM `citibike_trips_modified.trips`
+GROUP BY year;
+
+
+select *
+FROM `citibike_trips_modified.trips`
