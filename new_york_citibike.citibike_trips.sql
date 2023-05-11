@@ -1,7 +1,7 @@
 --removes all of the null data assuming that no row can have a blank start station with other valid columns of data \\saving result of this as view in bigquery
 select *
 from bigquery-public-data.new_york_citibike.citibike_trips
-where start_station_id is not Null;
+where start_station_id is  Null;
 
 --what gender takes more trips (no way to see repeat customers)/acessing view for query
 select gender, Count(gender) as gender_count
@@ -15,9 +15,9 @@ from `citibike_trips_modified.trips`
 group by gender
 order by avg_trip_duration desc;
 
-select usertype, CONCAT(ROUND(avg(tripduration)/60, 2),' minutes') as avg_trip_duration
+select extract(year from starttime) as year, usertype, ROUND(avg(tripduration)/60, 2) as avg_trip_duration
 from `citibike_trips_modified.trips`
-group by usertype
+group by year, usertype
 order by avg_trip_duration desc;
 
 --How many trips have been taken by subscribers/customers? ...makes sense that mroe subscribers would use service mroe
@@ -25,6 +25,14 @@ select usertype , count(usertype) as user_count,
 from `citibike_trips_modified.trips`
 group by usertype 
 order by user_count desc;
+
+--trips by month
+select extract(year from starttime) as year,
+ extract(month from starttime) as month, 
+ count(*) as tripcount, 
+from `citibike_trips_modified.trips`
+group by year, month
+order by month desc;
 
 --most popular start stations  
 select start_station_name, start_station_latitude, start_station_longitude,  count(start_station_id) as trip_started_count
@@ -59,11 +67,12 @@ order by year asc, month asc, day asc
 --Average duration of trips by year
 select 
   extract(YEAR from starttime) as year,
+  extract(month from starttime) as month,
   round(avg(tripduration/60) , 2) as avg_trip_duration,
   count(*) as number_of_trips
 from `citibike_trips_modified.trips`
-group by year
-order by year asc;
+group by year, month
+order by year, month asc;
 
 --Looking for the reason why 2018 is missing a large number of trips
 select 
@@ -296,3 +305,91 @@ GROUP BY year;
 
 select *
 FROM `citibike_trips_modified.trips`
+
+---gets distance and gcoutns all trips and time spent for each bike by year
+select extract(year from starttime) as year,
+       bikeid,
+       count(*) as unique_trips,
+       round(sum(tripduration)/60,2) as total_time_spent,
+       sum(
+         st_distance(
+            st_geogpoint(start_station_longitude, start_station_latitude),
+            st_geogpoint(end_station_longitude,   end_station_latitude)
+          )/1609) as dist_in_miles
+from  `citibike_trips_modified.trips`
+group by year, bikeid
+order by dist_in_miles desc
+
+--gets count of trips and time spent riding
+select bikeid, count(*) as trips , round(sum(tripduration)/60,2) as totaltime
+from  `citibike_trips_modified.trips`
+group by bikeid
+order by totaltime desc
+
+--getting unique bike count for year
+select extract(year from starttime) as year,
+       COUNT(DISTINCT bikeid) as unique_bike_count
+FROM `citibike_trips_modified.trips`
+group by year
+
+---new code for gettting count for all rides a station sees
+select extract(year from starttime) as year, extract(month from starttime) as month, start_station_name, start_station_latitude, start_station_longitude,  count(start_station_id) as trip_started_count
+from  `citibike_trips_modified.trips`
+group by year, month, start_station_name, start_station_latitude , start_station_longitude
+order by trip_started_count desc;
+
+--checking how many trips where 0 miles traveled , may indicate an error with ride
+select extract(year from starttime) as year,
+       extract(month from starttime) as month,
+       count(*) as error_trips 
+from (select *,
+  st_distance(
+    st_geogpoint(start_station_longitude, start_station_latitude),
+    st_geogpoint(end_station_longitude,   end_station_latitude)
+  )/1609 as dist_in_miles
+from  `citibike_trips_modified.trips`)
+where dist_in_miles = 0 and tripduration < 90
+group by year, month
+
+--statement to check to see if any null values for columns we will be using moving foward
+select *
+from `citibike_trips_modified.trips`
+where starttime is not null
+limit 5
+--gets the average age of a usertype (not accurate do to the fact that we cannot identify any specific customer)
+select year, usertype, avg(year - birth_year) as avgage_age,
+from(
+    select extract(year from starttime) as year, birth_year, usertype
+  from `citibike_trips_modified.trips`
+)
+where birth_year is not null
+group by year, usertype
+order by year asc
+
+--checking to get average birth year of user type
+select extract(year from starttime) as year, usertype, avg(birth_year) as avgage_birth_year
+from `citibike_trips_modified.trips`
+group by year, usertype
+order by year asc
+
+--gets the average age of a gender (not accurate do to the fact that we cannot identify any specific customer)
+select year, gender, avg(year - birth_year) as avgage_age,
+from(
+    select extract(year from starttime) as year, birth_year, gender
+  from `citibike_trips_modified.trips`
+)
+where gender is not null
+group by year, gender
+order by year asc
+
+--find the percentage of users that did not supply birth year
+SELECT year,
+       sum(CASE WHEN birth_year IS NULL THEN 1 END) AS userwithnoage,
+       COUNT(CASE WHEN birth_year IS NOT NULL THEN 1 END) AS userwithage,
+       ROUND(COUNT(CASE WHEN birth_year IS NULL THEN 1 END) * 100.0 / COUNT(*), 2) AS null_percent
+FROM (
+  SELECT EXTRACT(YEAR FROM starttime) AS year, birth_year
+  FROM `citibike_trips_modified.trips`
+)
+GROUP BY year
+ORDER BY year ASC
